@@ -59,8 +59,20 @@ conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cud
 
 (3) Install dependencies
 ```bash
-pip install plyfile==0.8.1 tqdm einops wandb lpips laspy colorama jaxtyping opencv-python matplotlib ipykernel torch_scatter submodules/diff-gaussian-rasterization submodules/simple-knn
+pip install plyfile==0.8.1 tqdm einops wandb lpips laspy colorama jaxtyping opencv-python matplotlib ipykernel submodules/diff-gaussian-rasterization submodules/simple-knn
 ```
+To install `torch_scatter`, download the appropriate version from [official wheel repository](https://pytorch-geometric.com/whl/) based on your Python, PyTorch, and CUDA versions. Then, install it using `pip`.
+
+For example, if you are using `Python 3.8`, `torch 2.3.1`, and `CUDA 11.8`, you may download the following wheel:
+
+[`torch_scatter-2.1.2+pt23cu118-cp38-cp38-linux_x86_64.whl`](https://data.pyg.org/whl/torch-2.3.0%2Bcu118/torch_scatter-2.1.2%2Bpt23cu118-cp38-cp38-linux_x86_64.whl)
+
+Then, install it with:
+
+```bash
+pip install torch_scatter-2.1.2+pt23cu118-cp38-cp38-linux_x86_64.whl
+```
+
 
 
 # 💻 Usage
