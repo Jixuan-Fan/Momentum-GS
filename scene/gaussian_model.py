@@ -21,7 +21,6 @@ from plyfile import PlyData, PlyElement
 from simple_knn._C import distCUDA2
 from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation
-from utils.distributed_utils import get_rank
 from scene.embedding import Embedding
 
 
@@ -254,8 +253,6 @@ class GaussianModel:
         self.spatial_lr_scale = spatial_lr_scale
         points = pcd.points[::self.ratio]
 
-        print(f'### In create_from_pcd, points number={len(points)}')
-
         if self.voxel_size <= 0:
             init_points = torch.tensor(points).float().cuda()
             init_dist = distCUDA2(init_points).float().cuda()
@@ -265,15 +262,10 @@ class GaussianModel:
             del init_points
             torch.cuda.empty_cache()
 
-        if get_rank() == 0:
-            print(f'### Initial voxel_size: {self.voxel_size}')
         points = self.voxelize_sample(points, voxel_size=self.voxel_size)
         fused_point_cloud = torch.tensor(np.asarray(points)).float().cuda()
         offsets = torch.zeros((fused_point_cloud.shape[0], self.n_offsets, 3)).float().cuda()
         anchors_feat = torch.zeros((fused_point_cloud.shape[0], self.feat_dim)).float().cuda()
-        
-        if get_rank() == 0:
-            print("### Number of points at initialization : ", fused_point_cloud.shape[0])
 
         dist2 = torch.clamp_min(distCUDA2(fused_point_cloud).float().cuda(), 0.0000001)
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 6)

@@ -42,10 +42,8 @@ torch.set_num_threads(32)
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
-    print("found tf board")
 except ImportError:
     TENSORBOARD_FOUND = False
-    print("not found tf board")
 
 
 def saveRuntimeCode(dst: str) -> None:
@@ -65,7 +63,6 @@ def saveRuntimeCode(dst: str) -> None:
         ignorePatterns.append(additionalPattern)
     log_dir = pathlib.Path(__file__).parent.resolve()
     shutil.copytree(log_dir, dst, ignore=shutil.ignore_patterns(*ignorePatterns))
-    print('Backup Finished!')
 
 
 def set_require_grad(model, is_require_grad):
@@ -114,7 +111,7 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
 
         gaussians = GaussianModel(dataset.feat_dim, dataset.n_offsets, dataset.voxel_size, dataset.update_depth, dataset.update_init_factor, dataset.update_hierachy_factor, dataset.use_feat_bank, dataset.appearance_dim, dataset.ratio, dataset.add_opacity_dist, dataset.add_cov_dist, dataset.add_color_dist)
         
-        scene = Scene(dataset, gaussians, ply_path=ply_path, shuffle=False, distributed=True, block_id=block_id)
+        scene = Scene(dataset, gaussians, ply_path=ply_path, shuffle=True, distributed=True, block_id=block_id, val=True)
 
         # if not the first block, sync mlp data with previous block
         if multi_block_per_gpu and rank == 0 and block_id != rank * num_blocks_per_gpu:
@@ -155,7 +152,6 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
     set_require_grad(momentum_mlp_cov, False)
     set_require_grad(momentum_mlp_opacity, False)
     
-    viewpoint_stack_list = [None for _ in range(num_blocks_per_gpu)]
     last_gaussians = None
     first_iter += 1
     dist.barrier()
@@ -171,7 +167,7 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
             gaussians = gaussians_list[idx]
             scene = scene_list[idx]
             block_id = block_id_list[idx]
-            viewpoint_stack = viewpoint_stack_list[idx]
+            train_view_loader = scene.getTrainCameras()
 
             if multi_block_per_gpu and iteration != first_iter:
                 checkpoint = checkpoint_tmp_dir + "chkpnt_" + str(block_id) + ".pth"
@@ -222,10 +218,10 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
                 bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
                 background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
                 
-                # Pick a view randomly
-                if not viewpoint_stack:
-                    viewpoint_stack = scene.getTrainCameras().copy()
-                viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
+                viewpoint_cam = train_view_loader.get_view()
+                viewpoint_cam.world_view_transform = viewpoint_cam.world_view_transform.to(device)
+                viewpoint_cam.full_proj_transform = viewpoint_cam.full_proj_transform.to(device)
+                viewpoint_cam.camera_center = viewpoint_cam.camera_center.to(device)
 
                 # Render
                 if (cur_iter - 1) == debug_from:
@@ -347,7 +343,7 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
 
                     # Save 
                     if (cur_iter in saving_iterations):
-                        time.sleep(30 * rank)
+                        time.sleep(10 * rank)
                         if rank == 0:
                             logger.info("\n[ITER {}] Block_{} Saving Gaussians".format(cur_iter, block_id))
                         else:
@@ -363,7 +359,7 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
                         if cur_iter > opt.update_from and cur_iter % opt.update_interval == 0:
                             gaussians.adjust_anchor(check_interval=opt.update_interval, success_threshold=opt.success_threshold, grad_threshold=opt.densify_grad_threshold, min_opacity=opt.min_opacity)
                     elif cur_iter == opt.update_until:
-                        print("### Stop densification.")
+                        print(f"### Block {block_id} stop densification.")
                         gaussians.opacity_accum = None
                         gaussians.offset_gradient_accum = None
                         gaussians.offset_denom = None
@@ -374,7 +370,6 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
                         gaussians.optimizer.step()
                         gaussians.optimizer.zero_grad(set_to_none = True)
 
-            viewpoint_stack_list[idx] = viewpoint_stack
             last_gaussians = gaussians
 
             if multi_block_per_gpu:
@@ -399,7 +394,11 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
             torch.cuda.empty_cache()
 
         iteration += opt.block_training_interval
-            
+
+    for scene in scene_list:
+        scene.shutdown_dataloader()
+        
+
 
 def prepare_output_and_logger(args):    
     if not args.model_path:
@@ -419,8 +418,6 @@ def prepare_output_and_logger(args):
     tb_writer = None
     if TENSORBOARD_FOUND:
         tb_writer = SummaryWriter(args.model_path)
-    else:
-        print("Tensorboard not available: not logging progress")
     return tb_writer
 
 
@@ -435,8 +432,8 @@ def training_report(tb_writer, dataset_name, iteration, Ll1, loss, l1_loss, elap
     if iteration % testing_freq == 0:
         scene.gaussians.eval()
         torch.cuda.empty_cache()
-        validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
-                              {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, len(scene.getTrainCameras()), 8)]})
+        validation_configs = (
+            {'name': 'test', 'cameras' : scene.getTestCameras()}, {'name': 'train', 'cameras' : scene.getValCameras()})
 
         for config in validation_configs:
             if config['cameras'] and len(config['cameras']) > 0:
@@ -449,7 +446,14 @@ def training_report(tb_writer, dataset_name, iteration, Ll1, loss, l1_loss, elap
                     render_image_list = []
                     errormap_list = []
 
-                for idx, viewpoint in enumerate(config['cameras']):
+                view_loader = config['cameras']
+                num_views = len(view_loader)
+
+                for idx in range(num_views):
+                    viewpoint = view_loader.get_view()
+                    viewpoint.world_view_transform = viewpoint.world_view_transform.to(device)
+                    viewpoint.full_proj_transform = viewpoint.full_proj_transform.to(device)
+                    viewpoint.camera_center = viewpoint.camera_center.to(device)
                     voxel_visible_mask = prefilter_voxel(viewpoint, scene.gaussians, *renderArgs)
                     image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs, visible_mask=voxel_visible_mask)["render"], 0.0, 1.0)
                     gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
@@ -593,3 +597,4 @@ if __name__ == "__main__":
         logger.info("\nTraining complete.")
 
     cleanup()
+    sys.exit(0)

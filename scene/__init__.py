@@ -20,12 +20,13 @@ from scene.gaussian_model import GaussianModel
 from arguments import ModelParams
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
 from utils.distributed_utils import get_rank
+from utils.load_view_utils import DataLoader
 
 class Scene:
 
     gaussians : GaussianModel
 
-    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], ply_path=None, distributed=False, block_id=-1, woimage=False):
+    def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0], ply_path=None, distributed=False, block_id=-1, woimage=False, val=False):
         """b
         :param path: Path to colmap scene main folder.
         """
@@ -44,6 +45,7 @@ class Scene:
 
         self.train_cameras = {}
         self.test_cameras = {}
+        self.val_cameras = {}
 
         partition = None
         if distributed:
@@ -83,17 +85,15 @@ class Scene:
             with open(os.path.join(self.model_path, "cameras.json"), 'w') as file:
                 json.dump(json_cams, file)
 
-        if shuffle: # False when training
-            random.shuffle(scene_info.train_cameras)  # Multi-res consistent random shuffling
-            random.shuffle(scene_info.test_cameras)  # Multi-res consistent random shuffling
-
         self.cameras_extent = scene_info.nerf_normalization["radius"]
-
+        
         for resolution_scale in resolution_scales:
-            print("Loading Training Cameras")
-            self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args, woimage=woimage)
-            print("Loading Test Cameras")
-            self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args, woimage=woimage)
+            self.train_cameras[resolution_scale] = DataLoader(args, scene_info.train_cameras, resolution_scale, shuffle=shuffle)
+            self.test_cameras[resolution_scale] = DataLoader(args, scene_info.test_cameras, resolution_scale, shuffle=False)
+            if val:
+                self.val_cameras[resolution_scale] = DataLoader(args, scene_info.val_cameras, resolution_scale, shuffle=False)
+            else:
+                self.val_cameras[resolution_scale] = []
 
         if self.loaded_iter:
             if block_id == -1:
@@ -124,14 +124,30 @@ class Scene:
             self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
 
     def getTrainCameras(self, scale=1.0):
-        return self.train_cameras[scale]
+        if len(self.train_cameras[scale]) > 0:
+            return self.train_cameras[scale]
+        else:
+            return None
 
     def getTestCameras(self, scale=1.0):
-        return self.test_cameras[scale]
-    
-    def getSingleTrainCameras(self, scale=1.0, id=0):
-        if id < 0:
-            id = 0
-        elif id > self.num_train_cameras - 1:
-            id = self.num_train_cameras - 1
-        return self.train_cameras[scale][id]
+        if len(self.test_cameras[scale]) > 0:
+            return self.test_cameras[scale]
+        else:
+            return None
+
+    def getValCameras(self, scale=1.0):
+        if len(self.val_cameras[scale]) > 0:
+            return self.val_cameras[scale]
+        else:
+            return None
+        
+    def shutdown_dataloader(self):
+        for resolution_scale in self.train_cameras:
+            if self.train_cameras[resolution_scale] is not None:
+                self.train_cameras[resolution_scale].shutdown()
+        for resolution_scale in self.test_cameras:
+            if self.test_cameras[resolution_scale] is not None:
+                self.test_cameras[resolution_scale].shutdown()
+        for resolution_scale in self.val_cameras:
+            if self.val_cameras[resolution_scale] is not None:
+                self.val_cameras[resolution_scale].shutdown()

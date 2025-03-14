@@ -41,8 +41,13 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     name_list = []
     per_view_dict = {}
     t_list = []
-    for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
+    num_views = len(views)
+    for idx in tqdm(range(num_views), desc="Rendering progress"):
         torch.cuda.reset_peak_memory_stats()
+        view = views.get_view()
+        view.world_view_transform = view.world_view_transform.cuda()
+        view.full_proj_transform = view.full_proj_transform.cuda()
+        view.camera_center = view.camera_center.cuda()
 
         torch.cuda.synchronize(); t0 = time.time()
         voxel_visible_mask = prefilter_voxel(view, gaussians, pipeline, background)
@@ -58,6 +63,8 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         name_list.append('{0:05d}'.format(idx) + ".png")
         torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
         torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
+
+    views.shutdown()
 
     t = np.array(t_list[5:])
     fps = 1.0 / t.mean()
@@ -85,8 +92,8 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
 
         if not skip_test:
             views = scene.getTestCameras()
-            if custom_test and views == []:
-                views = views + scene.getTrainCameras()
+            if custom_test and views == None:
+                views = scene.getTrainCameras()
             render_set(dataset.model_path, "test", scene.loaded_iter, views, gaussians, pipeline, background)
 
 

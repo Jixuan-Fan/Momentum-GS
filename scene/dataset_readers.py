@@ -52,6 +52,7 @@ class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
     train_cameras: list
     test_cameras: list
+    val_cameras: list
     nerf_normalization: dict
     ply_path: str
 
@@ -84,9 +85,6 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, woimage=Fal
     image_folder_name = os.path.basename(images_folder)
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
-        sys.stdout.write('\r')
-        sys.stdout.write("Reading camera {}/{}".format(idx+1, len(cam_extrinsics)))
-        sys.stdout.flush()
 
         extr = cam_extrinsics[key]
         intr = cam_intrinsics[extr.camera_id]
@@ -260,6 +258,8 @@ def readColmapSceneInfo(path, images, eval, lod, llffhold=8, meganerf_partition=
         train_cam_infos = cam_infos
         test_cam_infos = []
 
+    valid_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % 10 == 0]
+
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
     ply_path = os.path.join(path, "sparse/0/points3D.ply")
@@ -273,12 +273,12 @@ def readColmapSceneInfo(path, images, eval, lod, llffhold=8, meganerf_partition=
             xyz, rgb, _ = read_points3D_text(txt_path)
         storePly(ply_path, xyz, rgb)
 
-    print(f'start fetching data from ply file')
     pcd = fetchPly(ply_path)
 
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
+                           val_cameras=valid_cam_infos,
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path)
     return scene_info

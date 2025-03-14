@@ -18,14 +18,7 @@ from tqdm import tqdm
 WARNED = False
 
 def loadCam(args, id, cam_info, resolution_scale):
-
-    # # DEBUG
-    # print(f'### In loadCam, FovX: {cam_info.FovX}, FovY: {cam_info.FovY}')
-
     orig_w, orig_h = cam_info.image.size
-
-    # print(f'DEBUG: orig_w: {orig_w}, orig_h: {orig_h}')
-
     if args.resolution in [1, 2, 4, 6, 8]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
     else:  # should be a type that converts to float
@@ -47,18 +40,13 @@ def loadCam(args, id, cam_info, resolution_scale):
 
     if args.resolution == 4 and cam_info.image_4 is not None:
         resized_image_rgb = PILtoTorch(cam_info.image_4, resolution)
-        # print('use precomputed 4x image')
     elif args.resolution == 6 and cam_info.image_6 is not None:
         resized_image_rgb = PILtoTorch(cam_info.image_6, resolution)
     else:
         resized_image_rgb = PILtoTorch(cam_info.image, resolution)
-    # resized_image_rgb = PILtoTorch(cam_info.image, resolution)
 
     gt_image = resized_image_rgb[:3, ...]
     loaded_mask = None
-
-    # print(f'DEBUG: gt_image: {gt_image.shape}')
-     
     if resized_image_rgb.shape[1] == 4:
         loaded_mask = resized_image_rgb[3:4, ...]
 
@@ -70,19 +58,10 @@ def loadCam(args, id, cam_info, resolution_scale):
 
 def loadCam_woImage(args, id, cam_info, resolution_scale):
 
-    # DEBUG
-    # print(f'### In loadCam_woImage, cam_info: {cam_info}')
-    # try:
-    #     print(f'### In loadCam_woImage, FovX: {cam_info.FovX}, FovY: {cam_info.FovY}')
-    # except:
-    #     cam_info.FovX = 1.2752574957416003
-    #     cam_info.FovY = 0.9175270360994987
-
     try:
         orig_w, orig_h = cam_info.image.size
     except:
         orig_w, orig_h = cam_info.width, cam_info.height
-        # orig_w, orig_h = cam_info.image_width, cam_info.image_height
 
     if args.resolution in [1, 2, 6, 4, 8]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
@@ -110,9 +89,6 @@ def loadCam_woImage(args, id, cam_info, resolution_scale):
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args, woimage=False):
     camera_list = []
-
-    # if args.resolution == 4 and cam_infos[0].image_4 is not None:
-    #     print('Use precomputed 4x image')
 
     if woimage:
         for id, c in enumerate(tqdm(cam_infos)):
