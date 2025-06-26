@@ -1,6 +1,6 @@
-# Momentum-GS: Momentum Gaussian Self-Distillation for High-Quality Large Scene Reconstruction
+# [ICCV 2025] Momentum-GS: Momentum Gaussian Self-Distillation for High-Quality Large Scene Reconstruction
 
-[Jixuan Fan*](https://jixuan-fan.github.io/), [Wanhua Li*](https://li-wanhua.github.io/), Yifei Han, [Yansong Tang#](https://andytang15.github.io/)
+[Jixuan Fan*](https://jixuan-fan.github.io/), [Wanhua Li*](https://li-wanhua.github.io/), Yifei Han, Tianru Dai, [Yansong Tang#](https://andytang15.github.io/)
 
 **[[Project Page](https://jixuan-fan.github.io/Momentum-GS_Page/)] | [[Paper](https://arxiv.org/abs/2412.04887)]**
 
@@ -13,7 +13,10 @@ To further ensure consistency across the blocks, we incorporate block weighting,
 Extensive experiments on large-scale scenes show that our method consistently outperforms existing techniques, achieving a 12.8\% improvement in LPIPS over CityGaussian with much fewer divided blocks and establishing a new state of the art.
 
 # 📰 News
+**[2025.06]** Momentum-GS has been accepted to ICCV 2025 🎉🎉🎉
+
 **[2024.12]** We release the code.
+
 
 # 📝 TODO
 - [x] Release pretrained checkpoints.
