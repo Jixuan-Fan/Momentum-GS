@@ -71,3 +71,22 @@ class DataLoader:
     
     def __len__(self):
         return self.total
+
+    def __getitem__(self, index):
+        if self.total == 0:
+            raise IndexError("DataLoader is empty")
+
+        if not isinstance(index, int):
+            raise TypeError(f'Indices must be int or slice, not {type(index).__name__}')
+
+        index %= self.total
+        cam_info = self.cam_info_list[index]
+
+        return loadCam(self.args, index, cam_info, self.resolution_scale)
+
+    def __del__(self):
+        try:
+            self.shutdown()
+        except Exception:
+            pass
+

@@ -90,7 +90,7 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
     ema_loss_for_log = 0.0
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
-    viewpoint_stack = None
+    train_view_loader = scene.getTrainCameras()
     first_iter += 1
 
     for iteration in range(first_iter, opt.iterations + 1):  
@@ -102,10 +102,10 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
         bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
-        # Pick a view randomly
-        if not viewpoint_stack:
-            viewpoint_stack = scene.getTrainCameras().copy()
-        viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
+        viewpoint_cam = train_view_loader.get_view()
+        viewpoint_cam.world_view_transform = viewpoint_cam.world_view_transform.cuda()
+        viewpoint_cam.full_proj_transform = viewpoint_cam.full_proj_transform.cuda()
+        viewpoint_cam.camera_center = viewpoint_cam.camera_center.cuda()
 
         # Render
         if (iteration - 1) == debug_from:
@@ -189,7 +189,7 @@ def prepare_output_and_logger(args):
     return tb_writer
 
 
-def training_report(tb_writer, dataset_name, iteration, Ll1, loss, l1_loss, elapsed, scene : Scene, renderFunc, renderArgs, wandb=None, logger=None, testing_freq=1000):
+def training_report(tb_writer, dataset_name, iteration, Ll1, loss, l1_loss, elapsed, scene : Scene, renderFunc, renderArgs, wandb=None, logger=None, testing_freq=3000):
     if tb_writer:
         tb_writer.add_scalar(f'{dataset_name}/train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar(f'{dataset_name}/train_loss_patches/total_loss', loss.item(), iteration)
@@ -200,8 +200,8 @@ def training_report(tb_writer, dataset_name, iteration, Ll1, loss, l1_loss, elap
     if iteration % testing_freq == 0:
         scene.gaussians.eval()
         torch.cuda.empty_cache()
-        validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
-                              {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, len(scene.getTrainCameras()), 8)]})
+        validation_configs = (
+            {'name': 'test', 'cameras' : scene.getTestCameras()}, {'name': 'train', 'cameras' : scene.getValCameras()})
 
         for config in validation_configs:
             if config['cameras'] and len(config['cameras']) > 0:
@@ -214,7 +214,14 @@ def training_report(tb_writer, dataset_name, iteration, Ll1, loss, l1_loss, elap
                     render_image_list = []
                     errormap_list = []
 
-                for idx, viewpoint in enumerate(config['cameras']):
+                view_loader = config['cameras']
+                num_views = len(view_loader)
+
+                for idx in range(num_views):
+                    viewpoint = view_loader.get_view()
+                    viewpoint.world_view_transform = viewpoint.world_view_transform.cuda()
+                    viewpoint.full_proj_transform = viewpoint.full_proj_transform.cuda()
+                    viewpoint.camera_center = viewpoint.camera_center.cuda()
                     voxel_visible_mask = prefilter_voxel(viewpoint, scene.gaussians, *renderArgs)
                     image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs, visible_mask=voxel_visible_mask)["render"], 0.0, 1.0)
                     gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
