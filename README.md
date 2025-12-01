@@ -141,6 +141,10 @@ After training, you need to merge all the blocks. The following script will merg
 ```bash
 bash merge_render_metrics.sh <OUTPUT_FOLDER>
 ```
+
+If you’d like to reproduce the results reported in our paper, please add `-c` when running `metrics.py`.
+
+
 <details>
 <summary><span style="font-weight: bold;">Command Line Arguments</span></summary>
 
@@ -155,6 +159,14 @@ To evaluate the checkpoint, you can use:
 ```bash
 bash render_metrics.sh <OUTPUT_FOLDER>
 ```
+
+To be consistent with previous work (e.g., DOGS), we additionally apply the same color correction during evaluation. You can use this to reproduce the results reported in our paper.
+
+
+```bash
+bash render_metrics_color_correction.sh <OUTPUT_FOLDER>
+```
+
 <details>
 <summary><span style="font-weight: bold;">Command Line Arguments</span></summary>
 
