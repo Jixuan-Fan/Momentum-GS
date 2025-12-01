@@ -26,7 +26,7 @@ from utils.loss_utils import ssim
 import lpips
 import json
 from tqdm import tqdm
-from utils.image_utils import psnr
+from utils.image_utils import psnr, color_correct
 from argparse import ArgumentParser
 
 
@@ -43,7 +43,7 @@ def readImages(renders_dir, gt_dir):
     return renders, gts, image_names
 
 
-def evaluate(model_paths):
+def evaluate(model_paths, correct_color=False):
 
     full_dict = {}
     per_view_dict = {}
@@ -76,9 +76,17 @@ def evaluate(model_paths):
             ssims, psnrs, lpipss = [], [], []
 
             for idx in tqdm(range(len(renders)), desc="Metric evaluation progress"):
-                ssims.append(ssim(renders[idx].cuda(), gts[idx].cuda()))
-                psnrs.append(psnr(renders[idx].cuda(), gts[idx].cuda()))
-                lpipss.append(lpips_fn(renders[idx].cuda(), gts[idx].cuda()).detach())
+                if correct_color:
+                    render = renders[idx].squeeze().permute(1, 2, 0).contiguous()
+                    gt = gts[idx].squeeze().permute(1, 2, 0).contiguous()
+                    render_cc = color_correct(render, gt)
+                    render = torch.tensor(render_cc).permute(2, 0, 1).unsqueeze(0).contiguous()
+                else:
+                    render = renders[idx]
+
+                ssims.append(ssim(render.cuda(), gts[idx].cuda()))
+                psnrs.append(psnr(render.cuda(), gts[idx].cuda()))
+                lpipss.append(lpips_fn(render.cuda(), gts[idx].cuda()).detach())
 
             print("  PSNR : {:>12.7f}".format(torch.tensor(psnrs).mean(), ".5"))
             print("  SSIM : {:>12.7f}".format(torch.tensor(ssims).mean(), ".5"))
@@ -106,6 +114,7 @@ if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
     parser.add_argument('--model_paths', '-m', required=True, nargs="+", type=str, default=[])
+    parser.add_argument('--correct_color', '-c', action='store_true', default=False)
     args = parser.parse_args()
     
-    evaluate(args.model_paths)
+    evaluate(args.model_paths, args.correct_color)
