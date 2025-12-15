@@ -183,7 +183,7 @@ def training(dataset, opt, pipe, dataset_name, saving_iterations, debug_from, wa
                     replace_model(gaussians.mlp_color, last_gaussians.mlp_color)
                     replace_model(gaussians.mlp_cov, last_gaussians.mlp_cov)
                     replace_model(gaussians.mlp_opacity, last_gaussians.mlp_opacity)
-                gaussians.freezen_mlp()
+                gaussians.freeze_mlp()
 
             for cur_iter in range(iteration, end_iter):
                 if not gaussians.freeze_all_mlp:
